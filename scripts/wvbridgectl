@@ -42,6 +42,7 @@ uninstall)
 status)
     [ -e $B/enabled ] && echo enabled || echo disabled
     [ -e /run/wvbridge/env ] && echo "active this boot" || echo "stock this boot"
+    gsi && echo "Android half from the GSI" || echo "Android half from $W"
     for u in $U; do echo "$u $(systemctl is-active $u)"; done
     echo "HAL init $(A "getprop init.svc.$HAL"), shim maps $(cat /proc/$(pgrep -f 'drm@1.4-service.widevine$' | head -n 1)/maps 2>/dev/null | grep -c wvshim)" ;;
 *) echo "usage: $0 install|enable|disable|uninstall|status"; exit 2 ;;

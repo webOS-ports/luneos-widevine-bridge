@@ -22,9 +22,15 @@ if [ "$(stamp)" != "$(cat $B/base.stamp 2>/dev/null)" ]; then
     echo "wvbridge: system files differ from the install, staying stock"
     exit 0
 fi
+if gsi; then
+    ANDROID_FILES=
+    LAUNCH=/system/bin/wvlaunch DAEMON=/system/bin/wvbridged
+else
+    ANDROID_FILES="$W/wvbridged $W/wvlaunch $W/libwvshim.so"
+    LAUNCH=/vendor/lost+found/wvlaunch DAEMON=/data/local/tmp/wv/wvbridged
+fi
 for f in $B/libcbe-br.so $B/libhwcomposer.so $B/libWebOSCoreCompositor.so.0.0.1 \
-         $B/manifest.json $B/sites \
-         $W/libwidevinecdm.so $W/wvbridged $W/wvlaunch $W/libwvshim.so; do
+         $B/manifest.json $B/sites $W/libwidevinecdm.so $ANDROID_FILES; do
     [ -f "$f" ] || { echo "wvbridge: $f missing, staying stock"; exit 0; }
 done
 if mount --bind $B/libcbe-br.so $CBE &&
@@ -37,6 +43,8 @@ if mount --bind $B/libcbe-br.so $CBE &&
     rm -f $W/ov.sock
     : > $W/cdm.log; chmod 666 $W/cdm.log
     echo "QPA_HWC_VIDEO_SOCK=$W/ov.sock" > /run/wvbridge/env
+    # For wvbridge-hal.service and wvbridged.service: which build to run.
+    printf 'WV_LAUNCH=%s\nWV_DAEMON=%s\n' "$LAUNCH" "$DAEMON" > /run/wvbridge/android
     exit 0
 fi
 echo "wvbridge: a mount failed, staying stock"

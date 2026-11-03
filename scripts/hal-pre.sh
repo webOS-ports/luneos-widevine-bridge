@@ -29,4 +29,5 @@ until [ "$(A "getprop init.svc.$HAL")" = stopped ]; do
     n=$((n + 1)); [ $n -gt 10 ] && { echo "wvbridge: HAL did not stop"; exit 1; }
     sleep 1
 done
-A "grep -q lost+found /proc/mounts || mount --bind /data/local/tmp/wv /vendor/lost+found"
+# The NDK build's shim has to be where the vendor's HAL may load from.
+gsi || A "grep -q lost+found /proc/mounts || mount --bind /data/local/tmp/wv /vendor/lost+found"

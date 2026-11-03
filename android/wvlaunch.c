@@ -17,6 +17,14 @@
  * LICENSE@@@ */
 
 // Starts the Widevine HAL as init would (user, groups), with the shim preloaded.
+//
+// Where the shim lives depends on how the bridge was installed: by hand from the
+// NDK build, bind-mounted onto /vendor/lost+found, or built into a Halium GSI
+// (Android.bp), in /system/lib64, found by name through the link Halium's
+// linkerconfig adds from the system namespace into the vendor one.
+#ifndef WV_SHIM
+#define WV_SHIM "/vendor/lost+found/libwvshim.so"
+#endif
 #include <grp.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,7 +35,7 @@ int main(void) {
         perror("drop");
         return 1;
     }
-    setenv("LD_PRELOAD", "/vendor/lost+found/libwvshim.so", 1);
+    setenv("LD_PRELOAD", WV_SHIM, 1);
     execl("/vendor/bin/hw/android.hardware.drm@1.4-service.widevine",
           "android.hardware.drm@1.4-service.widevine", (char *)0);
     perror("exec");

@@ -26,5 +26,12 @@ LSM=/usr/lib/libWebOSCoreCompositor.so.0.0.1
 BCDM=/var/lib/widevine/BridgeCdm
 HAL=vendor.drm-widevine-hal-1-4
 A() { lxc-attach -n android -- /system/bin/sh -c "$1"; }
+# A Halium GSI built with the bridge (Android.bp) carries the Android half in
+# /system, which LuneOS sees under /android. Without it, the NDK build in $W
+# is used, with the shim bind-mounted onto /vendor/lost+found.
+gsi() {
+    [ -x /android/system/bin/wvbridged ] && [ -x /android/system/bin/wvlaunch ] &&
+        [ -f /android/system/lib64/libwvshim.so ]
+}
 # Identifies the files the bridge replaces, without reading 900 MB at boot.
 stamp() { stat -c '%s %Y %n' "$CBE" "$HWC" "$LSM"; }

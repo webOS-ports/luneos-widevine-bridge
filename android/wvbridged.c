@@ -28,6 +28,7 @@
 #include <media/NdkMediaDrm.h>
 #include <time.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -85,11 +86,12 @@ typedef struct CS {
     ANativeWindow *win;
     int sk;
     pthread_t vt;
-    int vrun;
-    volatile int gen;
+    atomic_int vrun; // vloop runs while set; stop_media clears it
+    atomic_int gen;  // bumped on a video reset
     pthread_mutex_t m;
     long vin, vout, qerr, late, shown, ain, aout;
     int lastw, lasth;
+    uint8_t *pc; // decoded audio for one reply, PCMCAP bytes
 } C;
 static int reply(int f, int32_t st, const void *p, uint32_t n);
 struct CS;
@@ -122,6 +124,13 @@ static void send_frame(C *c, AImage *im, int fen) {
         c->lasth = an->height;
     }
     if (c->sk < 0) return;
+    // The fds (plus the fence) go in a 32-fd control message and the ints in
+    // VF.ints: drop a handle that would not fit rather than overrun either.
+    if (nh->numFds < 0 || nh->numFds > 31 || nh->numInts < 0 ||
+        (size_t)nh->numInts > sizeof((VF *)0)->ints / sizeof(int32_t)) {
+        printf("buffer handle %d fds %d ints: too big, dropped\n", nh->numFds, nh->numInts);
+        return;
+    }
     VF f;
     memset(&f, 0, sizeof f);
     f.width = an->width;
@@ -137,6 +146,7 @@ static void send_frame(C *c, AImage *im, int fen) {
     memcpy(f.ints, nh->data + nh->numFds, sizeof(int) * nh->numInts);
     int nf = nh->numFds + (fen >= 0);
     char cb[CMSG_SPACE(sizeof(int) * 32)];
+    memset(cb, 0, sizeof cb); // cmsg padding goes out over the socket too
     struct iovec io = {&f, sizeof f};
     struct msghdr m;
     memset(&m, 0, sizeof m);
@@ -168,7 +178,7 @@ static int64_t read_delay(void) {
 }
 static void *vloop(void *a) {
     C *c = a;
-    AImage *hold[3] = {0};
+    AImage *hold[3] = {NULL};
     int64_t delay = read_delay(), lastrd = nowus();
     ssize_t o = -1;
     AMediaCodecBufferInfo inf;
@@ -265,16 +275,25 @@ static pthread_mutex_t clk_m = PTHREAD_MUTEX_INITIALIZER;
 static void *clockloop(void *a) {
     (void)a;
     int s = socket(AF_UNIX, SOCK_DGRAM, 0);
+    if (s < 0) {
+        perror("clock socket");
+        return NULL;
+    }
     struct sockaddr_un u;
     memset(&u, 0, sizeof u);
     u.sun_family = AF_UNIX;
-    strcpy(u.sun_path, "/data/local/tmp/wv/clock.sock");
+    snprintf(u.sun_path, sizeof u.sun_path, "%s", "/data/local/tmp/wv/clock.sock");
     unlink(u.sun_path);
-    if (bind(s, (void *)&u, sizeof u)) {
+    // Created 0666 by bind itself: a chmod by path afterwards could follow a
+    // swapped-in path.
+    mode_t um = umask(0111);
+    int br = bind(s, (void *)&u, sizeof u);
+    umask(um);
+    if (br) {
         perror("clock bind");
+        close(s);
         return NULL;
     }
-    chmod(u.sun_path, 0666);
     for (;;) {
         Clk k;
         if (recv(s, &k, sizeof k, 0) != (ssize_t)sizeof k) continue;
@@ -326,8 +345,10 @@ static int ensure_video(C *c) {
     struct sockaddr_un sa;
     memset(&sa, 0, sizeof sa);
     sa.sun_family = AF_UNIX;
-    strcpy(sa.sun_path, OV);
-    if (connect(c->sk, (struct sockaddr *)&sa, sizeof sa)) {
+    snprintf(sa.sun_path, sizeof sa.sun_path, "%s", OV);
+    if (c->sk < 0)
+        perror("compositor socket");
+    else if (connect(c->sk, (struct sockaddr *)&sa, sizeof sa)) {
         perror("compositor connect");
         close(c->sk);
         c->sk = -1;
@@ -435,17 +456,28 @@ static void stop_media(C *c) {
 }
 static int queue(C *c, AMediaCodec *m, const Smp *h, const uint32_t *sub, const uint8_t *d,
                  int64_t wait) {
+    uint32_t n = h->nsub ? h->nsub : 1;
+    size_t *cl = calloc(n, sizeof(size_t)), *en = calloc(n, sizeof(size_t));
+    if (!cl || !en) {
+        free(cl);
+        free(en);
+        return -13;
+    }
     ssize_t i = AMediaCodec_dequeueInputBuffer(m, wait);
-    if (i < 0) return ST_BUSY;
+    if (i < 0) {
+        free(cl);
+        free(en);
+        return ST_BUSY;
+    }
     size_t cap = 0;
     uint8_t *b = AMediaCodec_getInputBuffer(m, i, &cap);
     if (!b || cap < h->size) {
         printf("input buffer %zu too small for %u\n", cap, h->size);
+        free(cl);
+        free(en);
         return -7;
     }
     memcpy(b, d, h->size);
-    uint32_t n = h->nsub ? h->nsub : 1;
-    size_t *cl = calloc(n, sizeof(size_t)), *en = calloc(n, sizeof(size_t));
     for (uint32_t k = 0; k < h->nsub; k++) {
         cl[k] = sub[2 * k];
         en[k] = sub[2 * k + 1];
@@ -562,8 +594,9 @@ static int sample(C *c, const uint8_t *b, uint32_t n) {
     r = queue(c, c->ac, &h, sub, d, 30000);
     if (r) return reply(c->fd, r, NULL, 0);
     c->ain++;
-    static __thread uint8_t *pc;
-    if (!pc) pc = malloc(PCMCAP);
+    if (!c->pc) c->pc = malloc(PCMCAP);
+    if (!c->pc) return reply(c->fd, -13, NULL, 0);
+    uint8_t *pc = c->pc;
     uint32_t off = 0;
     for (;;) {
         AMediaCodecBufferInfo inf;
@@ -790,7 +823,7 @@ static void *client(void *a) {
                 memset(&ks, 0, sizeof ks);
                 s = AMediaDrm_provideKeyResponse(c->d, &c->s[i], d, dl, &ks);
                 printf("provideKeyResponse: %zu bytes, status %d\n", dl, (int)s);
-                static K k;
+                K k;
                 memset(&k, 0, sizeof k);
                 if (s == AMEDIA_OK) {
                     if (!walk(d, dl, sgn, &k) && k.msg) walk(k.msg, k.ml, lic, &k);
@@ -867,6 +900,7 @@ static void *client(void *a) {
     }
     close(f);
     printf("client gone\n");
+    free(c->pc);
     free(c);
     return NULL;
 }
@@ -874,26 +908,42 @@ int main(void) {
     setvbuf(stdout, NULL, _IOLBF, 0);
     signal(SIGPIPE, SIG_IGN);
     int l = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (l < 0) {
+        perror("socket");
+        return 1;
+    }
     struct sockaddr_un a;
     memset(&a, 0, sizeof a);
     a.sun_family = AF_UNIX;
-    strcpy(a.sun_path, BR_SOCK_DROID);
+    snprintf(a.sun_path, sizeof a.sun_path, "%s", BR_SOCK_DROID);
     unlink(a.sun_path);
-    if (bind(l, (void *)&a, sizeof a) || listen(l, 4)) {
+    // Before the clock thread starts: umask is per process.
+    mode_t um = umask(0111);
+    int br = bind(l, (void *)&a, sizeof a);
+    umask(um);
+    if (br || listen(l, 4)) {
         perror("bind");
+        close(l);
         return 1;
     }
-    chmod(a.sun_path, 0666);
     pthread_t ct;
-    pthread_create(&ct, NULL, clockloop, NULL);
+    if (pthread_create(&ct, NULL, clockloop, NULL)) puts("no clock thread: video is held");
     puts("listening");
     for (;;) {
         int f = accept(l, NULL, NULL);
         if (f < 0) continue;
         C *c = calloc(1, sizeof *c);
+        if (!c) {
+            close(f);
+            continue;
+        }
         c->fd = f;
         pthread_t t;
-        pthread_create(&t, NULL, client, c);
+        if (pthread_create(&t, NULL, client, c)) {
+            close(f);
+            free(c);
+            continue;
+        }
         pthread_detach(t);
     }
 }

@@ -58,6 +58,14 @@ Android side, with the NDK (r26d used):
 android/build.sh /path/to/android-ndk out
 ```
 
+Host tests for `wvbridged` (licence parser, request protocol, compositor message), against a fake NDK:
+
+```
+make -C tests NDK=/path/to/android-ndk all-checks
+```
+
+`all-checks` runs them plainly and under ASan+UBSan, TSan and valgrind; `CC=clang` works too.
+
 ## Installing (by hand, for now)
 
 | File | Where |
@@ -86,6 +94,5 @@ Known issues:
 - **The shim is mounted over `/vendor/lost+found`** inside the container, because there was no better place to put a preload the HAL can reach.
 - **`wvbridged` reads `/data/local/tmp/wv/delay_us`** every second, as a test knob for extra video delay.
 - **Atlas runs Chromium with `--no-sandbox` here.** A sandboxed CDM process would also need a way to reach `br.sock` and `clock.sock`.
-- **Not run yet:** analysers, sanitisers, armv7 and x86-64 builds, and unit tests. There are no tests.
 
 Never store or print licence or provisioning bodies, device IDs, certificates or keys when debugging this. The code doesn't, and its logs don't.

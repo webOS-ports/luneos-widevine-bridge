@@ -35,7 +35,7 @@
 using namespace cdm;
 // Samples kept back from Chromium so its demand runs ahead of decoder latency.
 #define HOLD 20
-static void lg(const char *f, ...) {
+__attribute__((format(printf, 1, 2))) static void lg(const char *f, ...) {
     FILE *o = fopen(BR_LOG_HOST, "a");
     if (!o) return;
     va_list v;
@@ -124,7 +124,11 @@ class Br final : public ContentDecryptionModule_10 {
     bool smp(const InputBuffer_2 &in, uint32_t video, Rep *r) {
         static uint8_t *b;
         static uint32_t cap;
-        uint32_t subs = in.num_subsamples * 8, need = (uint32_t)sizeof(Smp) + subs + in.data_size;
+        // wvbridged drops any message over 8 MiB; refuse it here, before the
+        // sum can wrap on a 32-bit build.
+        uint64_t need64 = sizeof(Smp) + (uint64_t)in.num_subsamples * 8 + in.data_size;
+        if (need64 > 8 * 1024 * 1024) return false;
+        uint32_t subs = in.num_subsamples * 8, need = (uint32_t)need64;
         if (need > cap) {
             free(b);
             cap = need + 65536;
@@ -204,17 +208,17 @@ class Br final : public ContentDecryptionModule_10 {
     }
 
   public:
-    explicit Br(Host_10 *h) : host(h), fd(-1), pw(64), ph(36), npts(0) {}
+    explicit Br(Host_10 *h) : host(h), fd(-1), pw(64), ph(36), pts(), npts(0) {}
     void Initialize(bool, bool, bool hw) override {
         fd = socket(AF_UNIX, SOCK_STREAM, 0);
         sockaddr_un a;
         memset(&a, 0, sizeof a);
         a.sun_family = AF_UNIX;
-        strcpy(a.sun_path, BR_SOCK_HOST);
-        int c = connect(fd, (sockaddr *)&a, sizeof a);
+        snprintf(a.sun_path, sizeof a.sun_path, "%s", BR_SOCK_HOST);
+        int c = fd < 0 ? -1 : connect(fd, (sockaddr *)&a, sizeof a);
         lg("Initialize hw_secure=%d connect=%d", (int)hw, c);
         if (c) {
-            close(fd);
+            if (fd >= 0) close(fd);
             fd = -1;
         }
         host->OnInitialized(c == 0);

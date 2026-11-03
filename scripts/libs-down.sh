@@ -17,7 +17,7 @@
 #
 # LICENSE@@@
 . /var/lib/widevine/bridge/common.sh
-rm -f /run/wvbridge/env
+rm -f /run/wvbridge/env /run/wvbridge/android
 # Without its library the bridge is not offered to any site.
 rm -f $BCDM/_platform_specific/linux_arm64/libwidevinecdm.so
 for f in $LSM $HWC $CBE; do

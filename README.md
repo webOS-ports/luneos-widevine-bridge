@@ -52,7 +52,17 @@ make CXX=aarch64-webos-linux-g++
 
 `third_party/cdm/` holds Chromium's CDM API header (BSD licence, see its `LICENSE`).
 
-Android side, with the NDK (r26d used):
+Android side, either into a Halium GSI or with the NDK.
+
+In a Halium tree (16.0 used), check this repository out at `external/luneos-widevine-bridge` and add the three modules to the device:
+
+```
+PRODUCT_PACKAGES += wvbridged wvlaunch libwvshim
+```
+
+The HAL is a vendor process, so the GSI's linkerconfig also has to link `libwvshim.so` from the system namespace into the vendor one (`system/linkerconfig/contents/namespace/vendordefault.cc`, next to `libselinux_stubs.so`).
+
+With the NDK (r26d used), for a GSI that does not carry them:
 
 ```
 android/build.sh /path/to/android-ndk out
@@ -70,10 +80,11 @@ make -C tests NDK=/path/to/android-ndk all-checks
 
 | File | Where |
 |---|---|
-| `libwidevinecdm.so`, `wvbridged`, `libwvshim.so`, `wvlaunch` | `/userdata/android-data/local/tmp/wv/` |
+| `libwidevinecdm.so` | `/userdata/android-data/local/tmp/wv/` |
+| `wvbridged`, `libwvshim.so`, `wvlaunch`, only when the GSI does not carry them | `/userdata/android-data/local/tmp/wv/` |
 | `scripts/*`, `systemd/*`, `cdm/manifest.json` | `/var/lib/widevine/bridge/` |
 
-Then run `/var/lib/widevine/bridge/wvbridgectl install` followed by `wvbridgectl enable`, and reboot. Edit `/var/lib/widevine/bridge/sites` to choose the sites, then restart `webapp-mgr`.
+At boot the services use the GSI's copies when `/android/system/bin/wvbridged` is there, and the NDK build otherwise; `wvbridgectl status` says which. Then run `/var/lib/widevine/bridge/wvbridgectl install` followed by `wvbridgectl enable`, and reboot. Edit `/var/lib/widevine/bridge/sites` to choose the sites, then restart `webapp-mgr`.
 
 The HAL needs the device to have been provisioned with Google by Android at least once.
 

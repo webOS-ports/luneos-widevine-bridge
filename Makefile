@@ -17,7 +17,8 @@
 # LICENSE@@@
 
 # The LuneOS half: the library CDM Chromium loads. Built with the image's
-# toolchain (glibc). The Android half needs the NDK: see android/build.sh.
+# toolchain (glibc). The Android half is built into a Halium GSI (Android.bp)
+# or with the NDK (android/build.sh).
 
 CXX ?= g++
 CXXFLAGS ?= -O2

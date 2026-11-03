@@ -23,8 +23,9 @@ After=android-system.service wvbridge-hal.service
 
 [Service]
 Type=simple
+EnvironmentFile=/run/wvbridge/android
 ExecStartPre=-/usr/bin/pkill -9 -x wvbridged
-ExecStart=/usr/bin/lxc-attach -n android -- /system/bin/sh -c 'unset LD_LIBRARY_PATH LD_PRELOAD; exec /data/local/tmp/wv/wvbridged'
+ExecStart=/usr/bin/lxc-attach -n android -- /system/bin/sh -c 'unset LD_LIBRARY_PATH LD_PRELOAD; exec ${WV_DAEMON}'
 ExecStopPost=-/usr/bin/pkill -9 -x wvbridged
 # It logs a line per 48 frames, which is for tests.
 StandardOutput=null

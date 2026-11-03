@@ -18,7 +18,9 @@
 # LICENSE@@@
 . /var/lib/widevine/bridge/common.sh
 rm -f /run/wvbridge/env
-for f in $CDM $LSM $HWC $CBE; do
+# Without its library the bridge is not offered to any site.
+rm -f $BCDM/_platform_specific/linux_arm64/libwidevinecdm.so
+for f in $LSM $HWC $CBE; do
     grep -q " $f " /proc/mounts && umount -l "$f"
 done
 exit 0

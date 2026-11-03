@@ -23,13 +23,16 @@ if [ "$(stamp)" != "$(cat $B/base.stamp 2>/dev/null)" ]; then
     exit 0
 fi
 for f in $B/libcbe-br.so $B/libhwcomposer.so $B/libWebOSCoreCompositor.so.0.0.1 \
+         $B/manifest.json $B/sites \
          $W/libwidevinecdm.so $W/wvbridged $W/wvlaunch $W/libwvshim.so; do
     [ -f "$f" ] || { echo "wvbridge: $f missing, staying stock"; exit 0; }
 done
 if mount --bind $B/libcbe-br.so $CBE &&
    mount --bind $B/libhwcomposer.so $HWC &&
    mount --bind $B/libWebOSCoreCompositor.so.0.0.1 $LSM &&
-   mount --bind $W/libwidevinecdm.so $CDM; then
+   mkdir -p $BCDM/_platform_specific/linux_arm64 &&
+   cp $B/manifest.json $B/sites $BCDM/ &&
+   ln -sf $W/libwidevinecdm.so $BCDM/_platform_specific/linux_arm64/libwidevinecdm.so; then
     mkdir -p /run/wvbridge
     rm -f $W/ov.sock
     : > $W/cdm.log; chmod 666 $W/cdm.log

@@ -4,7 +4,7 @@ Lets LuneOS's Chromium play Widevine-protected video through the Android Widevin
 
 The bridge was written and tested on a Pixel 3a (sargo, with the HAL `android.hardware.drm@1.4-service.widevine`, which reports L1).
 
-Google's CDM is not part of this repo and is not needed by it. With the bridge enabled, Netflix stops working, because Netflix needs Google's CDM. The bridge is therefore off by default.
+Google's CDM is not part of this repo and is not needed by it. Chromium offers the bridge only to the sites listed in `scripts/sites` and keeps Google's CDM for every other site. Netflix, for one, refuses the HAL's licence request and then signs the account out. The bridge is off by default.
 
 ## How it works
 
@@ -20,7 +20,7 @@ luna-surfacemanager                                 ▼
    video layer under the UI, in the punch-through hole
 ```
 
-- **`cdm/wvbridgecdm.cc`**: a library CDM (CDM interface 10) with the same file name as Google's, bind-mounted over it.
+- **`cdm/wvbridgecdm.cc`**: a library CDM (CDM interface 10), installed next to Google's under `/var/lib/widevine/BridgeCdm` with `cdm/manifest.json` and the site list. Chromium registers it as a second Widevine CDM with its own type and gives it to listed sites only.
   - It forwards sessions, licence requests and every sample to `wvbridged`.
   - Audio comes back decrypted and decoded. Video does not.
   - For video, Chromium gets 64-pixel-wide black placeholder frames with the right timestamps, and turns them into a video hole.
@@ -36,7 +36,7 @@ luna-surfacemanager                                 ▼
 
 The Chromium, compositor and plugin sides are in:
 
-- webOS-ports/chromium151#21: placeholder → hole frames, natural size, the media clock over Mojo, and a kNoKey crash fix.
+- webOS-ports/chromium151#21: placeholder → hole frames, natural size, the media clock over Mojo, a kNoKey crash fix, and the per-site choice between the bridge and Google's CDM.
 - webOS-ports/luna-surfacemanager#24: tells the plugin where the hole is.
 - webOS-ports/meta-webos-ports#849: the hwcomposer plugin's video plane.
 
@@ -71,9 +71,9 @@ make -C tests NDK=/path/to/android-ndk all-checks
 | File | Where |
 |---|---|
 | `libwidevinecdm.so`, `wvbridged`, `libwvshim.so`, `wvlaunch` | `/userdata/android-data/local/tmp/wv/` |
-| `scripts/*`, `systemd/*` | `/var/lib/widevine/bridge/` |
+| `scripts/*`, `systemd/*`, `cdm/manifest.json` | `/var/lib/widevine/bridge/` |
 
-Then run `/var/lib/widevine/bridge/wvbridgectl install` followed by `wvbridgectl enable`, and reboot.
+Then run `/var/lib/widevine/bridge/wvbridgectl install` followed by `wvbridgectl enable`, and reboot. Edit `/var/lib/widevine/bridge/sites` to choose the sites, then restart `webapp-mgr`.
 
 The HAL needs the device to have been provisioned with Google by Android at least once.
 
@@ -89,7 +89,7 @@ The binaries built from this tree are byte-identical to the ones tested.
 
 Known issues:
 
-- **Netflix fails** with the bridge (E100): requests are generated, but no licence reaches the HAL. Choosing the CDM per site is not done yet.
+- **Netflix cannot use the bridge.** Its servers receive the HAL's licence request, refuse it and invalidate the login (HTTP 401 on its API, then E100). It is therefore not in `scripts/sites` and keeps Google's CDM.
 - **Sockets are world-writable.** `br.sock` and `ov.sock` are created mode 0666 under `/data/local/tmp/wv`, so any local process can drive the HAL through the bridge or hand the compositor buffers. They need an owner or group rule before this can be on by default.
 - **The shim is mounted over `/vendor/lost+found`** inside the container, because there was no better place to put a preload the HAL can reach.
 - **`wvbridged` reads `/data/local/tmp/wv/delay_us`** every second, as a test knob for extra video delay.

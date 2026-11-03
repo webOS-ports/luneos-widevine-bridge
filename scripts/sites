@@ -1,0 +1,29 @@
+# Sites that get the Widevine bridge (L1 through the Android HAL). One domain
+# per line; its subdomains match too. Every other site keeps Google's CDM.
+# Edit, then restart webapp-mgr for the change to take effect.
+#
+# Not Netflix: its servers refuse the HAL's licence request and then sign the
+# account out.
+npo.nl
+primevideo.com
+shaka-player-demo.appspot.com
+
+# Not tried yet. Uncomment one at a time, restart webapp-mgr, play once and
+# check that a licence comes back; take it out again if the site refuses it.
+# Whether a service accepts the HAL's (Android L1) request from a web player
+# is not published anywhere, so each one has to be tried.
+#disneyplus.com
+#hbomax.com
+#max.com
+#videoland.com
+#skyshowtime.com
+#paramountplus.com
+#peacocktv.com
+#hulu.com
+#tv.apple.com
+#canalplus.com
+#dazn.com
+#crunchyroll.com
+#viaplay.com
+#rakuten.tv
+#pathe-thuis.nl

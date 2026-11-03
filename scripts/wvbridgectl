@@ -17,12 +17,13 @@
 #
 # LICENSE@@@
 # usage: wvbridgectl install|enable|disable|uninstall|status
-# install leaves it off. With it on, Netflix fails: it needs Google's CDM.
+# install leaves it off. With it on, the sites listed in sites get the bridge
+# and every other site, Netflix included, keeps Google's CDM.
 . /var/lib/widevine/bridge/common.sh
 U="wvbridge-libs.service wvbridge-hal.service wvbridged.service"
 case "$1" in
 install)
-    grep -qE " ($CBE|$HWC|$LSM|$CDM) " /proc/mounts && { echo "a bridge library is bound: run down first"; exit 1; }
+    grep -qE " ($CBE|$HWC|$LSM) " /proc/mounts && { echo "a bridge library is bound: run down first"; exit 1; }
     for u in $U; do cp $B/$u /etc/systemd/system/; done
     mkdir -p /etc/systemd/system/surface-manager-daemon.service.d
     cp $B/video-plane.conf /etc/systemd/system/surface-manager-daemon.service.d/

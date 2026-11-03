@@ -21,8 +21,10 @@ W=/userdata/android-data/local/tmp/wv
 CBE=/usr/lib/libcbe.so
 HWC=/usr/lib/plugins/platforms/libhwcomposer.so
 LSM=/usr/lib/libWebOSCoreCompositor.so.0.0.1
-CDM=/var/lib/widevine/WidevineCdm/_platform_specific/linux_arm64/libwidevinecdm.so
+# The bridge CDM sits next to Google's, which stays in place for every site
+# the bridge does not list (see sites).
+BCDM=/var/lib/widevine/BridgeCdm
 HAL=vendor.drm-widevine-hal-1-4
 A() { lxc-attach -n android -- /system/bin/sh -c "$1"; }
 # Identifies the files the bridge replaces, without reading 900 MB at boot.
-stamp() { stat -c '%s %Y %n' "$CBE" "$HWC" "$LSM" "$CDM"; }
+stamp() { stat -c '%s %Y %n' "$CBE" "$HWC" "$LSM"; }

@@ -1,0 +1,48 @@
+#!/bin/sh
+# @@@LICENSE
+#
+# Copyright (c) 2026 Herman van Hazendonk <github.com@herrie.org>
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# LICENSE@@@
+# usage: wvbridgectl install|enable|disable|uninstall|status
+# install leaves it off. With it on, the sites listed in sites get the bridge
+# and every other site, Netflix included, keeps Google's CDM.
+. /var/lib/widevine/bridge/common.sh
+U="wvbridge-libs.service wvbridge-hal.service wvbridged.service"
+case "$1" in
+install)
+    grep -qE " ($CBE|$HWC|$LSM) " /proc/mounts && { echo "a bridge library is bound: run down first"; exit 1; }
+    for u in $U; do cp $B/$u /etc/systemd/system/; done
+    mkdir -p /etc/systemd/system/surface-manager-daemon.service.d
+    cp $B/video-plane.conf /etc/systemd/system/surface-manager-daemon.service.d/
+    stamp > $B/base.stamp
+    systemctl daemon-reload
+    echo installed, off ;;
+enable)  touch $B/enabled; systemctl enable wvbridge-libs.service; echo "on from next boot" ;;
+disable) rm -f $B/enabled; systemctl disable wvbridge-libs.service; echo "off from next boot" ;;
+uninstall)
+    systemctl disable wvbridge-libs.service 2>/dev/null
+    rm -f $B/enabled /etc/systemd/system/surface-manager-daemon.service.d/video-plane.conf
+    rmdir /etc/systemd/system/surface-manager-daemon.service.d 2>/dev/null
+    for u in $U; do rm -f /etc/systemd/system/$u; done
+    systemctl daemon-reload
+    echo "removed, reboot if it was on" ;;
+status)
+    [ -e $B/enabled ] && echo enabled || echo disabled
+    [ -e /run/wvbridge/env ] && echo "active this boot" || echo "stock this boot"
+    for u in $U; do echo "$u $(systemctl is-active $u)"; done
+    echo "HAL init $(A "getprop init.svc.$HAL"), shim maps $(cat /proc/$(pgrep -f 'drm@1.4-service.widevine$' | head -n 1)/maps 2>/dev/null | grep -c wvshim)" ;;
+*) echo "usage: $0 install|enable|disable|uninstall|status"; exit 2 ;;
+esac
